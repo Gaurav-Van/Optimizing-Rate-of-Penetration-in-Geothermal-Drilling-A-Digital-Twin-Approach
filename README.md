@@ -182,6 +182,167 @@ Since RMSE is essentially standard deviation plus the random and systemic errors
 
 <hr>
 
+## Model Building - Building our Digital Twin — daal4py and XGBoost Optimized Training and Inference
+
+**Configurations**
+
+```python
+i_flag = 1
+model_file = 'test0.pkl'
+
+drilling_data = geothermal_data_final
+input_cols = ['WOB (k-lbs)_P', 'Surface Torque (psi)_P', 'Rotary Speed (rpm)_P','Flow In (gpm)_P']
+output_col = 'ROP(1 ft)_P'
+```
+### 1. Linear Regression RMSE Score benchmark
+We will start by training a linear regression model and evaluating it to establish an RMSE reference point and ensure that our XGBoost model will outperform a simple linear regressor.
+
+```python
+x_train, x_test, y_train, y_test = prepare_data(
+    drilling_data, input_cols_list=input_cols, output_var=output_col)
+
+print("===== Running Benchmarks for Linear Regression =====")
+train_time, pred_time, MSE = linreg(
+    x_train, x_test, y_train, y_test, i_flag)
+print("Training time = ", train_time)
+print("Prediction time = ", pred_time)
+print('MSE:', str(round(np.mean(MSE), 3)))
+print('Root MSE:', str(np.sqrt(round(np.mean(MSE), 3))))
+```
+<img width="327" alt="Screenshot 2024-11-01 at 12 53 25 PM" src="https://github.com/user-attachments/assets/88dc2d6f-4770-4641-94ac-dabc02e87d2b">
+
+### 2. XGBoost Daal4Py Model 
+
+Using XGBoost and automated hyperparameter optimization through GridSearchCV and xgb methods (Figure 12). The XGB_prediction_daal4py custom function from the digital-twin AI Reference Kit is utilized to convert the XGBoost model to daal4py.
+
+```python
+x_train, x_test, y_train, y_test = prepare_data(
+    drilling_data, input_cols_list=input_cols, output_var=output_col, shuffle=False)
+loop_ctr = 5
+parameters = {'nthread': [1],
+              'learning_rate': [0.02],  # so called `eta` value
+              'max_depth': [3, 5],
+              'min_child_weight': [6, 7],
+              'n_estimators': [750, 1000],
+              'tree_method': ['hist']}
+print(
+    "===== Running Benchmarks for XGB Hyperparameter Training =====")
+train_time, trained_model, model_params = XGBHyper_train(
+    x_train, y_train, parameters)
+print("Training time = ", train_time)
+if i_flag:
+    prediction, pred_time, MSE = XGB_predict(
+        x_test, y_test, trained_model, loop_ctr, i_flag)
+    prediction, pred_time_daal4py, MSE_daal4py = XGB_predict_daal4py(
+        x_test, y_test, trained_model, loop_ctr, i_flag)
+    print("Prediction time = ", pred_time)
+    print("daal4py Prediction time = ", pred_time_daal4py)
+    print('Root MSE: ', str(np.sqrt(round(np.mean(MSE), 3))))
+    print('daal4py Root MSE: ',
+                str(np.sqrt(round(np.mean(MSE_daal4py), 3))))
+else:
+    prediction, pred_time, MSE = XGB_predict(
+        x_test, y_test, trained_model, loop_ctr, i_flag)
+    print("Prediction time = ", pred_time)
+    print('Root MSE: ', str(np.sqrt(round(np.mean(MSE), 3))))
+
+joblib.dump(trained_model, "model_xgbhpo.pkl")
+```
+<img width="1051" alt="Screenshot 2024-11-01 at 12 54 32 PM" src="https://github.com/user-attachments/assets/e4229511-675f-4948-969a-f1313e310641">
+
+<hr>
+
+## Explainable AI (XAI) and SHAP
+
+### Introduction to Explainable AI (XAI)
+Explainable AI (XAI) refers to methods and techniques that make the behavior and predictions of machine learning models understandable to humans. The goal of XAI is to provide transparency, interpretability, and trust in AI systems by explaining how models make decisions. This is crucial for ensuring accountability, fairness, and compliance with regulations, especially in critical applications like healthcare, finance, and autonomous systems.
+
+### SHAP (SHapley Additive exPlanations)
+SHAP is a popular XAI method that uses cooperative game theory to explain the output of machine learning models. The core idea is to allocate credit for a model’s prediction among its input features by considering the impact of each feature when it is present, missing, or combined with other features. SHAP values provide a unified measure of feature importance, making it easier to understand and compare the contributions of different features.
+
+#### Key Concepts:
+- **Shapley Values**: Originating from cooperative game theory, Shapley values fairly distribute the "payout" (model prediction) among the "players" (input features) based on their contributions.
+- **Feature Impact**: SHAP values indicate how much each feature contributes to the difference between the actual prediction and the average prediction.
+
+### Waterfall Plot
+The SHAP waterfall plot is a visualization that shows how each feature contributes to moving the model output from the base value (average model output) to the final prediction. It provides a detailed breakdown of the impact of each feature on a single prediction.
+
+#### How to Interpret:
+- **Base Value**: The average model output over the training dataset.
+- **Feature Contributions**: Features that push the prediction higher are shown in red, while those that push it lower are shown in blue.
+- **Final Prediction**: The sum of the base value and all feature contributions.
+
+### SHAP Heatmap
+The SHAP heatmap provides a high-level overview of the impact of all features across multiple predictions. Unlike the waterfall plot, which focuses on individual predictions, the heatmap shows the collective influence of features on the model’s outputs.
+
+#### How to Interpret:
+- **Color Intensity**: Indicates the magnitude of the SHAP values, with brighter colors representing higher impact.
+- **Feature Importance**: Helps identify which features consistently have a strong influence on the model’s predictions.
+- **Patterns and Clusters**: Reveals patterns and clusters in the data, indicating how different features interact and affect the model’s behavior.
+
+```python
+explainer = shap.TreeExplainer(trained_model)
+shap_values = explainer(x_test)
+```
+
+```python
+shap.plots.waterfall(shap_values[1])
+```
+
+When ROP = 16.757 feet/hour, this is the impact of each feature:
+- Flow In (GPM) brings the model down from the base value by -5.13 ROP units.
+- WOB (k-lbs) brings the model down from the base value by -3.13 ROP units.
+- Surface Torque (psi) brings the model down from the base value by -0.77 ROP units.
+- Rotary Speed (rpm) brings the model up from the base value by +0.43 ROP units.
+
+![image](https://github.com/user-attachments/assets/e4d60e8f-8103-4466-a4d1-e3b291ddcd6c)
+
+```python
+shap.plots.waterfall(shap_values[10])
+```
+
+When ROP = 46.66 feet/hour, this is the impact of each feature:
+- Flow In (GPM) brings the model up from the base value by +11.59 ROP units.
+- WOB (k-lbs) brings the model up from the base value by +2.98 ROP units
+- Surface Torque (psi) brings the model up from the base value by +4.15 ROP units.
+- Rotary Speed (rpm) brings the model up from the base value by +2.57 ROP units
+
+![image](https://github.com/user-attachments/assets/567dfdde-1689-476e-8970-a5c56bb8b4d7)
+
+**SHAP Heatmap**
+
+The SHAP Heatmap serves a similar purpose as the waterfall plot. However, instead of looking at the impact sample by sample, it shows the high-level impact of all features across our model’s outputs. Again, this visualization can help us understand how different features impact our model. In the case of the sharp increase in ROP around instance (sample) 1750, we see very high SHAP values for both Flow In and WOB, indicating that these two features are primarily responsible for the resulting increase in ROP.
+
+```python
+shap.plots.heatmap(shap_values[0:])
+```
+
+![image](https://github.com/user-attachments/assets/1da3d04d-6106-410e-a8a9-347d11da6d2b)
+
+- **Feature Impact Varies with ROP:** The influence of features like Flow In, WOB, Surface Torque, and Rotary Speed changes with different ROP levels. At lower ROP, these features tend to have a negative or smaller positive impact, while at higher ROP, their impact becomes more positive and significant.
+
+- **Optimizing Drilling Parameters:** By understanding these impacts, drilling operations can be optimized. For example, adjusting Flow In and WOB based on the current ROP can lead to more efficient drilling.
+
+- **Data-Driven Decisions:** These insights enable data-driven adjustments to drilling parameters, improving overall efficiency and effectiveness.
+
+<hr>
+
+## Conclusion 
+
+In this project, we leveraged Intel-optimized XGBoost and daal4py libraries to develop a machine learning digital twin for simulating Rate of Penetration (ROP) in drilling operations. This digital twin, represented by our predictive model, provides valuable insights by simulating ROP based on various input features. To enhance trust and interpretability, we integrated an Explainable AI (XAI) workflow using SHAP. This allowed us to clearly understand the impact of each input feature on the model’s predictions, ensuring transparency and confidence in our digital twin’s outputs. Through this approach, we demonstrated the effectiveness of combining advanced machine learning techniques with XAI to optimize and understand complex drilling processes.
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
