@@ -174,6 +174,12 @@ Next, we will perform a pair plot analysis, which uses a “small multiple” ap
 
 A pair plot analysis is particularly useful for visualizing these relationships, as it reveals complex, multi-modal, and skewed distributions through diagonal histograms. The kernel density maps for depth highlight clusters for each control parameter, indicating the presence of various rock types and the drilling parameters employed. 
 
+![image](https://github.com/user-attachments/assets/92910ed0-fd64-49e4-b960-5a0963c3047d)
+
+**Score Metric**
+
+Since RMSE is essentially standard deviation plus the random and systemic errors of our data and model, it is a good goal to achieve an **RMSE far below our ROP standard deviation (23.36 feet/hour).** `geothermal_data_final.describe()`
+
 <hr>
 
 
