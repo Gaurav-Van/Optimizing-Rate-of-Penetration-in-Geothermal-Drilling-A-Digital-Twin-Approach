@@ -82,7 +82,103 @@ By leveraging digital twin technology, geoscientists and engineers can better un
 
 <hr>
 
-## Code Analysis and WalkThrough
+## Exploratory Data Analysis
+
+The **Utah FORGE** (Frontier Observatory for Research in Geothermal Energy) project is a significant initiative aimed at advancing geothermal energy technologies. It serves as a dedicated underground field laboratory where various technologies related to enhanced geothermal systems (EGS) are developed, tested, and accelerated.
+
+### The Dataset
+The dataset you mentioned is from the drilling of the **Utah FORGE 58–32 MU-ESW1 well** near Roosevelt Hot Springs. This dataset is collected using an **Electronic Drilling Recorder (EDR)**, which is a system that captures and records various drilling parameters in real-time.
+
+### Key Parameters in the Dataset
+The dataset is recorded at one-foot intervals and covers depths from **85.18 feet to 7536.25 feet**. Here are some of the key parameters included:
+
+- **Depth**: The vertical distance from the surface to the point of measurement.
+- **Rate of Penetration (ROP)**: The speed at which the drill bit advances through the rock, usually measured in feet per hour.
+- **Weight on Bit (WOB)**: The amount of downward force applied to the drill bit.
+- **Hookload**: The total weight suspended from the hook, including the drill string and any additional equipment.
+- **Temperatures In and Out**: The temperature of the drilling fluid entering and exiting the wellbore.
+- **Pump Pressure**: The pressure exerted by the pumps circulating the drilling fluid.
+- **Flows In and Out**: The volume of drilling fluid being pumped into and out of the well.
+- **H2S**: The concentration of hydrogen sulfide gas, which is a hazardous gas that can be encountered during drilling.
+
+### Purpose of the Data
+This data is crucial for several reasons:
+1. **Monitoring and Control**: Real-time monitoring of these parameters helps in controlling the drilling process, ensuring safety, and optimizing performance.
+2. **Training Models**: The data can be used to train machine learning models to predict and optimize drilling performance, detect anomalies, and improve overall efficiency.
+3. **Research and Development**: It supports research into new drilling technologies and methods, contributing to the advancement of geothermal energy extraction.
+4. **Application in Enhanced Geothermal Systems (EGS)**: Enhanced Geothermal Systems involve creating artificial reservoirs in hot rock formations by injecting fluid to enhance permeability. The data from the EDR helps in understanding the subsurface conditions and optimizing the drilling process to create these reservoirs effectively.
+
+### Overview of Data
+![image](https://github.com/user-attachments/assets/b3af0baa-6a1e-4c48-8425-2ab932c1d997)
+
+<hr>
+
+## Analysis and WalkThrough
+
+### Libraries
+
+```python
+import pandas as pd 
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+import time
+import sys
+import joblib
+import shap
+import numpy as np
+import xgboost as xgb
+from sklearn import linear_model
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import train_test_split
+sns.set(style="darkgrid")
+
+import warnings
+warnings.filterwarnings('ignore')
+```
+
+### Utilities to handle various aspects of XGBoost and Daal4Py modeling and optimizations.
+
+- **prepare_data**: Splits the dataset into training and testing sets.
+- **linreg**: Trains and evaluates a linear regression model, optionally using Intel's optimizations.
+- **XGBHyper_train**: Trains an XGBoost model with hyperparameter tuning.
+- **XGBReg_train**: Trains an XGBoost model with specified parameters.
+- **XGB_predict**: Makes predictions using a trained XGBoost model and calculates the mean squared error.
+- **XGB_predict_daal4py**: Makes predictions using a trained XGBoost model with daal4py optimizations.
+- **XGB_predict_aug**: Makes predictions using a trained XGBoost model with optional daal4py optimizations.
+- **data_proc**: Processes raw data by applying a rolling mean and optional interpolation, and plots the processed data.
+
+### Data Pre-Processing 
+
+For digital twins, we must first define the causal relationships within the modeled system. To achieve this, we will separate the inputs and outputs of the drill rig. This leaves WOB, TOR, RPM, and FLOW as inputs and ROP as our sole output. **ROP defines the amount of downward force applied to rock during drilling.** Lastly, we will remove the first 1000ft of data to focus on areas where drilling is slow and can be improved, like zones of high pressure and temperature.
+
+```python
+geothermal_drilling_data_1000ft = geothermal_drilling_data_raw.loc[geothermal_drilling_data_raw['Depth'] > 1000, :]
+geothermal_drilling_data_1000ft.head(10)
+final_features = ['ROP(1 ft)', 'WOB (k-lbs)', 'Surface Torque (psi)', 'Rotary Speed (rpm)','Flow In (gpm)']
+geothermal_data_final = data_proc(geothermal_drilling_data_1000ft, final_features, depth_var='Depth', dropna=True, rolling_win=10, interpolate='cubic')
+```
+![image](https://github.com/user-attachments/assets/e25450e9-c26b-4032-a94f-54a4458f4d6b)
+
+### Feature Analysis 
+
+**Pearson correlation matrix**
+
+- **Positive Relation:** Flow in, rotary speed, and ROP show moderate positive correlations. This makes sense because fluid flow through the drill string helps spin the bit, leading to higher rotation speeds and rates of penetration. 
+- **Negative Relation:** Between ROP and Depth. As depth increases, the rate of penetration (ROP) decreases due to harder rock formations, higher pressure and temperature, and equipment wear.
+- **Positive Relation:** Between WOB and Depth. As depth increases, the weight on bit (WOB) increases to counteract the reduced ROP and overcome greater resistance from deeper formations.
+
+**Pairplot Analysis**
+
+Next, we will perform a pair plot analysis, which uses a “small multiple” approach to visualize the univariate distribution of all variables in a dataset along with all of their pairwise relationships. From the diagonal histograms, we see various complex multi-modal and skewed distributions. The kernel density maps associated with depth indicate a complex distribution of clusters for each control parameter, representing multiple rock types and the parameters used to drill through them. 
+
+A pair plot analysis is particularly useful for visualizing these relationships, as it reveals complex, multi-modal, and skewed distributions through diagonal histograms. The kernel density maps for depth highlight clusters for each control parameter, indicating the presence of various rock types and the drilling parameters employed. 
+
+<hr>
+
+
+
+
 
 
 
